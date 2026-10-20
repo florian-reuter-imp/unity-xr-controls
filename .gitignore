@@ -1,0 +1,22 @@
+# Dies ist ein Unity-PAKET-Repo, kein Projekt. Die .meta-Dateien gehoeren
+# ausdruecklich mit ins Repo: Ohne sie bekaeme jeder Nutzer neue GUIDs.
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+*.csproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.unitypackage
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

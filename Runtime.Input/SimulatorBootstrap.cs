@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.XR;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation;
 using UnityEngine.XR.Management;
 #if UNITY_EDITOR
@@ -29,16 +30,36 @@ namespace SmartXR.Input
     /// die starre Perspektive, obwohl die Brille längst da war. Genau dieser
     /// Fehler ist am 19.10. auf dem Gerät aufgefallen.
     ///
-    /// Jetzt wird gewartet, bis die Lage **entschieden** ist, und zwar in
-    /// beide Richtungen:
+    /// DREI SIGNALE, DREI VERSCHIEDENE FRAGEN
+    /// --------------------------------------
+    /// Die zweite Fassung wartete pauschal fünf Sekunden auf ein laufendes
+    /// Display-Subsystem. Auch das war zu knapp: Über Air Link braucht eine
+    /// Quest regelmäßig länger, bis wirklich ein Bild fließt, und dann sprang
+    /// der Simulator an, obwohl die Brille unterwegs war. Am 21.10. gemeldet.
     ///
-    ///   - Läuft ein Display-Subsystem, gibt es eine Brille: kein Simulator.
-    ///   - Ist die Initialisierung fertig und kein Loader aktiv, gibt es
-    ///     keine: Simulator, und zwar sofort, ohne die Wartezeit abzusitzen.
-    ///   - Sonst weiter warten, höchstens <see cref="Wartezeit"/> Sekunden.
+    /// Der Fehler lag nicht in der Zahl, sondern darin, **ein** Signal für
+    /// drei Fragen zu benutzen:
     ///
-    /// Ohne XR-Konfiguration fällt die Entscheidung im ersten Bild, es
-    /// verzögert also niemanden, der ohne Brille arbeitet.
+    ///   - <c>Manager.isInitializationComplete</c> sagt: Der Versuch ist
+    ///     vorbei. Nicht, ob er geglückt ist.
+    ///   - <c>Manager.activeLoader != null</c> sagt: Eine XR-Laufzeit hat uns
+    ///     angenommen. **Es wird eine Brille geben.** Ab hier ist ein
+    ///     Simulator falsch, egal wie lange das Bild noch braucht.
+    ///   - <c>XRDisplaySubsystem.running</c> sagt: Es fließt ein Bild. Das
+    ///     ist das späteste der drei und das einzige, auf das es ankam.
+    ///
+    /// Dazu kommt ein echtes Ereignis statt Abfragen:
+    /// <c>InputDevices.deviceConnected</c> meldet die Brille in dem Moment,
+    /// in dem sie sich anmeldet.
+    ///
+    /// SO WIRD JETZT ENTSCHIEDEN
+    /// -------------------------
+    ///   - Display läuft oder eine Brille meldet sich: kein Simulator, sofort.
+    ///   - Initialisierung durch und **kein** Loader: keine Brille in Sicht,
+    ///     Simulator sofort. Wer ohne Brille arbeitet, wartet keine Sekunde.
+    ///   - Loader aktiv, Bild noch nicht da: weiter warten, und zwar
+    ///     großzügig (<see cref="WartezeitMitLoader"/>). Hier kostet Warten
+    ///     nichts, Aufgeben aber die richtige Ansicht.
     /// </summary>
     public static class SimulatorBootstrap
     {
@@ -47,15 +68,25 @@ namespace SmartXR.Input
         private const string MenuPath = "Tools/SMART-XR/Simulator ohne Brille";
 
         /// <summary>
-        /// Wie lange höchstens auf eine Brille gewartet wird.
-        ///
-        /// Fünf Sekunden sind großzügig — eine über Link verbundene Quest
-        /// braucht meist unter einer. Großzügig, weil der Preis unterschiedlich
-        /// ausfällt: Wartet man zu kurz, bekommt man die starre Perspektive und
-        /// sucht den Fehler woanders. Wartet man zu lang, fängt der
-        /// Desktop-Betrieb ein paar Sekunden später an.
+        /// Wie lange auf die Entscheidung gewartet wird, **solange noch kein
+        /// Loader übernommen hat**. Hier geht es nur um die wenigen Bilder,
+        /// die XR Management zum Hochfahren braucht.
         /// </summary>
-        private const float Wartezeit = 5f;
+        private const float WartezeitBisEntscheidung = 5f;
+
+        /// <summary>
+        /// Wie lange auf das Bild gewartet wird, **wenn ein Loader aktiv
+        /// ist**, die Brille also kommt.
+        ///
+        /// Eine Minute, und das ist Absicht. Der Preis ist hier sehr
+        /// ungleich verteilt: Wartet man zu lang, passiert nichts weiter —
+        /// es gibt ohnehin keine Ansicht, auf die man warten müsste, denn
+        /// die Brille ist im Anmarsch. Gibt man zu früh auf, startet der
+        /// Simulator und übernimmt die Kamera, und dann sieht man die starre
+        /// Perspektive, obwohl die Brille zwei Sekunden später bereit wäre.
+        /// Genau das ist über Air Link passiert.
+        /// </summary>
+        public static float WartezeitMitLoader = 60f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Start()
@@ -76,40 +107,85 @@ namespace SmartXR.Input
         /// <summary>Wartet die Entscheidung ab und legt dann los — oder nicht.</summary>
         private sealed class Warten : MonoBehaviour
         {
+            /// <summary>
+            /// Wird vom Ereignis gesetzt, sobald sich eine Brille anmeldet.
+            /// Ein Ereignis statt einer Abfrage: Es meldet sich im selben
+            /// Augenblick und nicht erst im nächsten Bild.
+            /// </summary>
+            private bool brilleGemeldet;
+
+            private void OnEnable() => InputDevices.deviceConnected += Angemeldet;
+            private void OnDisable() => InputDevices.deviceConnected -= Angemeldet;
+
+            private void Angemeldet(InputDevice geraet)
+            {
+                if ((geraet.characteristics & InputDeviceCharacteristics.HeadMounted) != 0)
+                    brilleGemeldet = true;
+            }
+
             private IEnumerator Start()
             {
-                float bis = Time.realtimeSinceStartup + Wartezeit;
-                bool entschieden = false;
+                // --- Stufe 1: Warten, bis klar ist, ob XR überhaupt läuft ---
+                float bis = Time.realtimeSinceStartup + WartezeitBisEntscheidung;
 
                 while (Time.realtimeSinceStartup < bis)
                 {
-                    if (XrPresence.HeadsetActive)
-                    {
-                        Debug.Log("[SmartXR.Input] Brille aktiv — kein Simulator.");
-                        Destroy(gameObject);
-                        yield break;
-                    }
-
-                    if (OhneXr())
-                    {
-                        entschieden = true;   // Kein Loader, kein Warten noetig.
-                        break;
-                    }
-
+                    if (Da()) { Abbrechen("Brille aktiv"); yield break; }
+                    if (EntschiedenOhneXr()) break;
+                    if (LoaderAktiv()) break;
                     yield return null;
                 }
 
-                if (!entschieden)
+                // --- Stufe 2: Loader aktiv? Dann kommt die Brille ----------
+                if (LoaderAktiv())
                 {
-                    Debug.Log($"[SmartXR.Input] Nach {Wartezeit:0.#} s keine Brille "
-                              + "erkannt — XR Interaction Simulator wird gestartet. Hängt "
-                              + "die Brille doch? Dann war sie zu langsam: Wartezeit in "
-                              + "SimulatorBootstrap erhöhen, oder den Simulator über "
-                              + "Tools > SMART-XR > Simulator ohne Brille abschalten.");
+                    Debug.Log("[SmartXR.Input] XR-Laufzeit aktiv, warte auf das Bild. "
+                              + $"Bis zu {WartezeitMitLoader:0.#} s — über Air Link dauert "
+                              + "das regelmäßig länger. Kein Simulator, solange ein Loader "
+                              + "läuft.");
+
+                    float spaetestens = Time.realtimeSinceStartup + WartezeitMitLoader;
+                    while (Time.realtimeSinceStartup < spaetestens)
+                    {
+                        if (Da()) { Abbrechen("Brille liefert ein Bild"); yield break; }
+
+                        // Der Loader kann auch wieder verschwinden, etwa wenn
+                        // OpenXR die Sitzung aufgibt. Dann ist die Lage neu
+                        // entschieden, und zwar gegen die Brille.
+                        if (!LoaderAktiv()) break;
+
+                        yield return null;
+                    }
+
+                    if (LoaderAktiv())
+                    {
+                        Debug.LogWarning(
+                            $"[SmartXR.Input] Nach {WartezeitMitLoader:0.#} s läuft eine "
+                            + "XR-Laufzeit, aber es kommt kein Bild. Steht die Brille im "
+                            + "Standby, oder ist Link nicht gestartet? Der Simulator wird "
+                            + "jetzt doch angeworfen; er übernimmt dann die Kamera.");
+                    }
                 }
 
                 Starten();
                 Destroy(gameObject);
+            }
+
+            private void Abbrechen(string grund)
+            {
+                Debug.Log($"[SmartXR.Input] {grund} — kein Simulator.");
+                Destroy(gameObject);
+            }
+
+            /// <summary>Brille da: Bild fließt, oder sie hat sich angemeldet.</summary>
+            private bool Da() => XrPresence.HeadsetActive || brilleGemeldet;
+
+            /// <summary>Eine XR-Laufzeit hat uns angenommen.</summary>
+            private static bool LoaderAktiv()
+            {
+                var settings = XRGeneralSettings.Instance;
+                return settings != null && settings.Manager != null
+                       && settings.Manager.activeLoader != null;
             }
 
             /// <summary>
@@ -117,7 +193,7 @@ namespace SmartXR.Input
             /// Initialisierung ist durch und kein Loader hat übernommen.
             /// Solange sie läuft, ist noch nichts entschieden.
             /// </summary>
-            private static bool OhneXr()
+            private static bool EntschiedenOhneXr()
             {
                 var settings = XRGeneralSettings.Instance;
                 if (settings == null || settings.Manager == null) return true;

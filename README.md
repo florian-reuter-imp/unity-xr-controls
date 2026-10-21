@@ -77,19 +77,19 @@ und dort steht es nicht : transitive Git-Abhängigkeiten verfolgt der Package
 Manager nicht. Wer dieses Paket zuerst einbindet, bekommt
 
 ```
-Package [com.github.hka-imp.robotkinematics@0.5.0] cannot be found
+Package [com.github.hka-imp.robotkinematics@0.6.0] cannot be found
 ```
 
 Also **zuerst**:
 
 ```
-https://github.com/florian-reuter-imp/unity-robot-kinematics.git#v0.5.0
+https://github.com/florian-reuter-imp/unity-robot-kinematics.git#v0.6.0
 ```
 
 **dann**:
 
 ```
-https://github.com/florian-reuter-imp/unity-xr-controls.git#v0.1.0
+https://github.com/florian-reuter-imp/unity-xr-controls.git#v0.2.0
 ```
 
 Unity: *Window > Package Manager > + > Add package from git URL*, beide Male.

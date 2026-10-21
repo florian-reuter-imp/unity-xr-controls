@@ -1,6 +1,6 @@
 {
   "name": "com.github.hka-imp.xrcontrols",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "XR Controls",
   "description": "Bedienung von Roboterszenen in XR und am Schreibtisch, mit derselben Belegung. Eingabekontexte, die sich stapeln statt sich zu ueberschreiben; eine Liste ein- und ausschaltbarer Features, die in der Brille an der linken Hand erscheint; ein Fokusverteiler, der Eingaben an genau ein Feature gibt; Erkennung, ob ueberhaupt eine Brille da ist, samt wartendem Simulatorstart. Dazu Greifen und Joggen am Werkzeugpunkt. Features melden sich selbst an -- ein Prefab in eine fremde Szene zu ziehen genuegt.",
   "unity": "6000.0",
@@ -22,6 +22,6 @@
     "com.unity.xr.interaction.toolkit": "3.5.1",
     "com.unity.xr.management": "4.5.4",
     "com.unity.ugui": "2.0.0",
-    "com.github.hka-imp.robotkinematics": "0.5.0"
+    "com.github.hka-imp.robotkinematics": "0.6.0"
   }
 }

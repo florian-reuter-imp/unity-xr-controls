@@ -2,6 +2,46 @@
 
 Dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.2.0] — 21.10.2026
+
+### Die Brille bekommt Zeit, und ein Ereignis
+`SimulatorBootstrap` wartete pauschal fünf Sekunden darauf, dass ein
+Display-Subsystem läuft. Über Air Link reicht das regelmäßig nicht: Dann
+sprang der Simulator an und übernahm die Kamera, obwohl die Brille unterwegs
+war.
+
+Der Fehler lag nicht in der Zahl, sondern darin, **ein** Signal für **drei**
+Fragen zu benutzen:
+
+| Signal | sagt |
+|---|---|
+| `Manager.isInitializationComplete` | Der Versuch ist vorbei. Nicht, ob er geglückt ist. |
+| `Manager.activeLoader != null` | Eine XR-Laufzeit hat uns angenommen. Es **wird** eine Brille geben. |
+| `XRDisplaySubsystem.running` | Es fließt ein Bild. Das späteste der drei. |
+| `InputDevices.deviceConnected` | Ein echtes Ereignis: die Brille meldet sich an. |
+
+Entscheidend ist das zweite: **Sobald ein Loader aktiv ist, ist ein Simulator
+falsch**, egal wie lange das Bild noch braucht.
+
+Jetzt zweistufig: Bild fließt oder Brille meldet sich → kein Simulator,
+sofort. Initialisierung durch und kein Loader → Simulator sofort, wer am
+Schreibtisch arbeitet wartet keine Sekunde. Loader aktiv, Bild fehlt noch →
+warten bis zu `WartezeitMitLoader` (eine Minute, öffentlich und zur Laufzeit
+setzbar).
+
+Die Minute ist Absicht: Zu lang warten kostet nichts, denn es gibt ohnehin
+keine Ansicht, auf die man warten müsste. Zu früh aufgeben kostet die
+richtige Perspektive.
+
+Verschwindet der Loader wieder, ist die Lage neu entschieden und der
+Simulator startet. Läuft nach einer Minute eine Laufzeit ohne Bild, gibt es
+eine Warnung mit dem wahrscheinlichen Grund statt stillschweigend die Kamera
+zu übernehmen.
+
+### Kinematik 0.6.0
+Die deklarierte Abhängigkeit verweist jetzt auf Robot Kinematics 0.6.0,
+den gemeinsam veröffentlichten und geprüften Stand.
+
 ## [0.1.0] — 20.10.2026
 
 ### Vor der Veroeffentlichung durchgesehen
